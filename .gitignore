@@ -1,4 +1,5 @@
 /automation/node_modules
+/automation/.build
 /lambda/node_modules
 /node_modules
 /build
