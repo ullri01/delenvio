@@ -1,0 +1,6 @@
+/automation/node_modules
+/lambda/node_modules
+/node_modules
+/build
+.DS_Store
+/.idea

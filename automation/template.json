@@ -1,0 +1,285 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Delenvio.com",
+  "Parameters": {
+    "env": {"Type": "String", "Default": "dev"},
+    "lambdaName": {"Type": "String", "Default": "WebLambda"},
+    "lambdaLocation": {"Type": "String", "Default": "deploy/lambda.zip"},
+    "alarmsEmail": {"Type": "String", "Default": "info@wheel42.com"},
+    "Origin": {"Type": "String", "Default": "delenvio.com"},
+    "bucketName": {"Type": "String", "Default": "com.delenvio.bucket.storage.dev"}
+  },
+  "Conditions": {
+    "CreateDevelopmentResources": {"Fn::Equals": [{"Ref": "env"}, "dev"]}
+  },
+  "Resources": {
+    "UserTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": {"Fn::Join": ["", ["delenvio-user-", {"Ref": "env"}]]},
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "created",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "KeyType": "HASH",
+            "AttributeName": "id"
+          },
+          {
+            "KeyType": "RANGE",
+            "AttributeName": "created"
+          }
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": "1",
+          "WriteCapacityUnits": "1"
+        }
+      }
+    },
+    "WebLambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": ["lambda.amazonaws.com"]},
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": {"Fn::Join": ["", [{"Ref": "lambdaName"}, "RolePolicy-", {"Ref": "env"}]]},
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+                  "Resource": "arn:aws:logs:*:*:*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["lambda:InvokeFunction"],
+                  "Resource": "arn:aws:lambda:*:*:*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetRecords",
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:GetShardIterator",
+                    "dynamodb:DescribeStream",
+                    "dynamodb:ListStreams",
+                    "dynamodb:BatchWriteItem"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "WebLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": {"Fn::Join": ["-", [{"Ref": "lambdaName"}, {"Ref": "env"}]]},
+        "Description": "Website Lambda",
+        "Handler": "lambda.handler",
+        "Role": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]},
+        "Code": {
+          "S3Bucket": {"Ref": "bucketName"},
+          "S3Key": {"Ref": "lambdaLocation"}
+        },
+        "Runtime": "nodejs4.3",
+        "Timeout": "300",
+        "MemorySize": 128
+      }
+    },
+    "RestApi": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "Description": "API for deleenvio.com",
+        "Name": {"Fn::Join": ["", ["delenvio-api-", {"Ref": "env"}]]}
+      }
+    },
+    "ApiDeployment": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "Description": {"Fn::Join": [" ", [{"Ref": "env"}, "deployment"]]},
+        "StageName": {"Ref": "env"}
+      },
+      "DependsOn": [
+        "RestApi",
+        "WebApiResource",
+        "PostWebApiMethod",
+        "OptionsWebApiMethod"
+      ]
+    },
+    "WebApiResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "ParentId": {"Fn::GetAtt": ["RestApi", "RootResourceId"]},
+        "PathPart": "web"
+      }
+    },
+    "PostWebApiMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "ResourceId": {"Ref": "WebApiResource"},
+        "HttpMethod": "POST",
+        "AuthorizationType": "NONE",
+        "Integration": {
+          "Type": "AWS",
+          "IntegrationHttpMethod": "POST",
+          "Uri": {
+            "Fn::Join": [
+              "", [
+                "arn:aws:apigateway:", {"Ref": "AWS::Region"}, ":lambda:path/2015-03-31/functions/",
+                {"Fn::GetAtt": ["WebLambda", "Arn"]}, "/invocations"
+              ]
+            ]
+          },
+          "RequestTemplates": {
+            "application/json": "{ \"sourceIp\": \"$context.identity.sourceIp\", \"fields\": $input.json('$') }"
+          },
+          "IntegrationResponses": [
+            {
+              "StatusCode": "201",
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": {
+                  "Fn::Join": ["", ["'", {"Ref": "Origin"}, "'"]]
+                }
+              }
+            }, {
+              "StatusCode": "400",
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": {
+                  "Fn::Join": ["", ["'", {"Ref": "Origin"}, "'"]]
+                }
+              },
+              "SelectionPattern": ".*Error.*"
+            }
+          ]
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "201",
+            "ResponseParameters": {"method.response.header.Access-Control-Allow-Origin": true}
+          }, {
+            "StatusCode": "400",
+            "ResponseParameters": {"method.response.header.Access-Control-Allow-Origin": true}
+          }
+        ]
+      }
+    },
+    "OptionsWebApiMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ResourceId": {
+          "Ref": "WebApiResource"
+        },
+        "HttpMethod": "OPTIONS",
+        "AuthorizationType": "NONE",
+        "Integration": {
+          "Type": "MOCK",
+          "RequestTemplates": {
+            "application/json": "{ \"statusCode\": 200 }"
+          },
+          "IntegrationResponses": [
+            {
+              "StatusCode": "200",
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
+                "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'",
+                "method.response.header.Access-Control-Allow-Origin": {
+                  "Fn::Join": ["", ["'", {"Ref": "Origin"}, "'"]]
+                }
+              }
+            }
+          ]
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "200",
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Headers": true,
+              "method.response.header.Access-Control-Allow-Methods": true,
+              "method.response.header.Access-Control-Allow-Origin": true
+            }
+          }
+        ]
+      }
+    },
+    "WebsiteS3": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {"Fn::Join": ["", ["com.delenvio.bucket.web.", {"Ref": "env"}]]},
+        "AccessControl": "BucketOwnerFullControl",
+        "Tags": [{"Key": "application", "Value": "deleenvio.com"}],
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [{"Ref": "Origin"}],
+              "AllowedMethods": ["GET"],
+              "MaxAge": 3000,
+              "AllowedHeaders": ["Authorization"]
+            }
+          ]
+        },
+        "WebsiteConfiguration": {
+          "ErrorDocument": "500.html",
+          "IndexDocument": "index.html"
+        }
+      }
+    },
+    "WebsiteS3BucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "WebsiteS3"},
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Principal": {"AWS": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]}},
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteS3"}, "/*"]]}]
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetObject"],
+              "Principal": "*",
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteS3"}, "/*"]]}]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "WebsiteURL": {"Value": {"Fn::GetAtt": ["WebsiteS3", "WebsiteURL"]}},
+    "WebsiteHttpsURL": {"Value": {"Fn::Join": ["", ["https://", {"Fn::GetAtt": ["WebsiteS3", "DomainName"]}]]}}
+  }
+}

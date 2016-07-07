@@ -1,0 +1,23 @@
+{
+  "name": "catalogworker",
+  "version": "1.0.0",
+  "description": "This background worker, implemented as a Lambda Function, runs continuously as events stream from DynamoDB: 1. Handles event event in the event stream 2. Enhances the catalog record with the new event data 3. Saves the new social catalog data",
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_ENV=test ./node_modules/.bin/mocha lambda-test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.3.10",
+    "bluebird": "^3.3.5",
+    "moment": "^2.13.0"
+  },
+  "devDependencies": {
+    "mocha": "^2.4.5",
+    "proxyquire": "^1.7.4",
+    "sinon": "^1.17.4",
+    "chai": "^3.5.0",
+    "nock": "^7.7.2"
+  }
+}
