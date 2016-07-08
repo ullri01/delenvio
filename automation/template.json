@@ -457,7 +457,7 @@
             "Type": "CNAME",
             "TTL": "900",
             "ResourceRecords": [
-              {"Fn::GetAtt": ["WebsiteBucketProd2", "DomainName"]}
+              {"Fn::Join": ["", [{"Ref": "WebsiteBucketProd2"}, ".s3-website-", {"Ref": "AWS::Region"}, ".amazonaws.com."]]}
             ]
           },
           {
@@ -465,7 +465,7 @@
             "Type": "CNAME",
             "TTL": "900",
             "ResourceRecords": [
-              {"Fn::GetAtt": ["WebsiteBucketDev", "DomainName"]}
+              {"Fn::Join": ["", [{"Ref": "WebsiteBucketDev"}, ".s3-website-", {"Ref": "AWS::Region"}, ".amazonaws.com."]]}
             ]
           },
           {
@@ -473,7 +473,7 @@
             "Type": "CNAME",
             "TTL": "900",
             "ResourceRecords": [
-              {"Fn::GetAtt": ["WebsiteBucketQa", "DomainName"]}
+              {"Fn::Join": ["", [{"Ref": "WebsiteBucketQa"}, ".s3-website-", {"Ref": "AWS::Region"}, ".amazonaws.com."]]}
             ]
           }
         ]
