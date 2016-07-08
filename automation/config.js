@@ -7,7 +7,9 @@ function clone (a) {
 }
 
 config.dev = {
+  site: 'delenvio.com',
   profile: 'trally',
+  sitePath: '../website',
   logLevel: config.logLevel,
   region: config.region,
   alarmsEmail: 'info@wheel42.com',
@@ -22,16 +24,14 @@ config.dev = {
   },
 
   s3: {
-    bucket: 'com.delenvio.bucket.storage.dev',
+    bucket: 'storage.delenvio.com',
     deploy: 'deploy/'
   }
 }
 config.test = clone(config.dev)
 config.stage = clone(config.dev)
 config.qa = clone(config.dev)
-config.qa.s3.bucket = 'com.delenvio.bucket.storage.qa'
 config.prod = clone(config.dev)
-config.prod.s3.bucket = 'com.delenvio.bucket.storage.prod'
 config.local = clone(config.dev)
 config.local.endpoint = 'http://localhost:8000'
 

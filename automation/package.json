@@ -6,11 +6,9 @@
   "scripts": {
     "automation": "./automation.js",
     "deploy": "./deploy.js",
-    "linter": "../lambda/*.js ../lambda/test/*.js --global describe --global it |snazzy || true",
-    "s3clean": "aws s3 rm --recursive s3://com.delenvio.buvket.web.dev/",
     "resume": "./control.js -all -resume",
     "pause": "./control.js -all -pause",
-    "s3website": "aws s3 cp --profile trally --recursive ../static s3://com.delenvio.bucket.web.dev/"
+    "clean": "aws --profile trally s3 rb s3://delenvio.com --force && aws --profile trally s3 rb s3://storage.delenvio.com --force && aws --profile trally s3 rb s3://qa.delenvio.com --force && aws --profile trally s3 rb s3://dev.delenvio.com --force"
   },
   "repository": {
     "type": "git",

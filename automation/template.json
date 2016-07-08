@@ -1,16 +1,31 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "Delenvio.com",
+  "Mappings": {
+    "RegionMap": {
+      "us-east-1": {"ZoneId": "Z3AQBSTGFYJSTF", "Endpoint": "s3-website-us-east-1.amazonaws.com"},
+      "us-west-1": {"ZoneId": "Z2F56UZL2M1ACD", "Endpoint": "s3-website-us-west-1.amazonaws.com"},
+      "us-west-2": {"ZoneId": "Z3BJ6K6RIION7M", "Endpoint": "s3-website-us-west-2.amazonaws.com"},
+      "eu-west-1": {"ZoneId": "Z1BKCTXD74EZPE", "Endpoint": "s3-website-eu-west-1.amazonaws.com"},
+      "ap-southeast-1": {"ZoneId": "Z3O0J2DXBE1FTB", "Endpoint": "s3-website-ap-southeast-1.amazonaws.com"},
+      "ap-southeast-2": {"ZoneId": "Z1WCIGYICN2BYD", "Endpoint": "s3-website-ap-southeast-2.amazonaws.com"},
+      "ap-northeast-1": {"ZoneId": "Z2M4EHUR26P7ZW", "Endpoint": "s3-website-ap-northeast-1.amazonaws.com"},
+      "sa-east-1": {"ZoneId": "Z31GFT0UA1I2HV", "Endpoint": "s3-website-sa-east-1.amazonaws.com"}
+    }
+  },
   "Parameters": {
     "env": {"Type": "String", "Default": "dev"},
-    "lambdaName": {"Type": "String", "Default": "WebLambda"},
-    "lambdaLocation": {"Type": "String", "Default": "deploy/lambda.zip"},
+    "lambda": {"Type": "String", "Default": "WebLambda"},
+    "lambdaLocation": {"Type": "String", "Default": "deploy/"},
     "alarmsEmail": {"Type": "String", "Default": "info@wheel42.com"},
     "Origin": {"Type": "String", "Default": "delenvio.com"},
-    "bucketName": {"Type": "String", "Default": "com.delenvio.bucket.storage.dev"}
+    "bucketName": {"Type": "String", "Default": "storage.delenvio.com"},
+    "website": {"Type": "String", "Default": "delenvio.com"}
   },
   "Conditions": {
-    "CreateDevelopmentResources": {"Fn::Equals": [{"Ref": "env"}, "dev"]}
+    "Development": {"Fn::Equals": [{"Ref": "env"}, "dev"]},
+    "Production": {"Fn::Equals": [{"Ref": "env"}, "prod"]},
+    "Qa": {"Fn::Equals": [{"Ref": "env"}, "qa"]}
   },
   "Resources": {
     "UserTable": {
@@ -59,7 +74,7 @@
         "Path": "/",
         "Policies": [
           {
-            "PolicyName": {"Fn::Join": ["", [{"Ref": "lambdaName"}, "RolePolicy-", {"Ref": "env"}]]},
+            "PolicyName": {"Fn::Join": ["", [{"Ref": "lambda"}, "RolePolicy-", {"Ref": "env"}]]},
             "PolicyDocument": {
               "Version": "2012-10-17",
               "Statement": [
@@ -99,13 +114,13 @@
     "WebLambda": {
       "Type": "AWS::Lambda::Function",
       "Properties": {
-        "FunctionName": {"Fn::Join": ["-", [{"Ref": "lambdaName"}, {"Ref": "env"}]]},
+        "FunctionName": {"Fn::Join": ["-", [{"Ref": "lambda"}, {"Ref": "env"}]]},
         "Description": "Website Lambda",
         "Handler": "lambda.handler",
         "Role": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]},
         "Code": {
           "S3Bucket": {"Ref": "bucketName"},
-          "S3Key": {"Ref": "lambdaLocation"}
+          "S3Key": {"Fn::Join": ["", [{"Ref": "lambdaLocation"}, {"Ref": "lambda"}, "-", {"Ref": "env"}, ".zip"]]}
         },
         "Runtime": "nodejs4.3",
         "Timeout": "300",
@@ -233,12 +248,12 @@
         ]
       }
     },
-    "WebsiteS3": {
+    "WebsiteBucketProd": {
       "Type": "AWS::S3::Bucket",
       "Properties": {
-        "BucketName": {"Fn::Join": ["", ["com.delenvio.bucket.web.", {"Ref": "env"}]]},
+        "BucketName": {"Ref": "website"},
         "AccessControl": "BucketOwnerFullControl",
-        "Tags": [{"Key": "application", "Value": "deleenvio.com"}],
+        "Tags": [{"Key": "application", "Value": {"Ref": "website"}}],
         "CorsConfiguration": {
           "CorsRules": [
             {
@@ -255,31 +270,223 @@
         }
       }
     },
-    "WebsiteS3BucketPolicy": {
+    "WebsiteBucketProd2": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {"Fn::Join": ["", ["www.", {"Ref": "website"}]]},
+        "AccessControl": "BucketOwnerFullControl",
+        "Tags": [{"Key": "application", "Value": {"Ref": "website"}}],
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [{"Ref": "Origin"}],
+              "AllowedMethods": ["GET"],
+              "MaxAge": 3000,
+              "AllowedHeaders": ["Authorization"]
+            }
+          ]
+        },
+        "WebsiteConfiguration": {
+          "RedirectAllRequestsTo": {"HostName": {"Ref": "website"}}
+        }
+      }
+    },
+    "WebsiteBucketDev": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {"Fn::Join": [".", ["dev", {"Ref": "website"}]]},
+        "AccessControl": "BucketOwnerFullControl",
+        "Tags": [{"Key": "application", "Value": {"Ref": "website"}}],
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [{"Ref": "Origin"}],
+              "AllowedMethods": ["GET"],
+              "MaxAge": 3000,
+              "AllowedHeaders": ["Authorization"]
+            }
+          ]
+        },
+        "WebsiteConfiguration": {
+          "ErrorDocument": "500.html",
+          "IndexDocument": "index.html"
+        }
+      }
+    },
+    "WebsiteBucketQa": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {"Fn::Join": [".", ["qa", {"Ref": "website"}]]},
+        "AccessControl": "BucketOwnerFullControl",
+        "Tags": [{"Key": "application", "Value": {"Ref": "website"}}],
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [{"Ref": "Origin"}],
+              "AllowedMethods": ["GET"],
+              "MaxAge": 3000,
+              "AllowedHeaders": ["Authorization"]
+            }
+          ]
+        },
+        "WebsiteConfiguration": {
+          "ErrorDocument": "500.html",
+          "IndexDocument": "index.html"
+        }
+      }
+    },
+    "WebsiteProdPolicy": {
       "Type": "AWS::S3::BucketPolicy",
       "Properties": {
-        "Bucket": {"Ref": "WebsiteS3"},
+        "Bucket": {"Ref": "WebsiteBucketProd"},
         "PolicyDocument": {
           "Statement": [
             {
+              "Sid": "AllowWebLambdaAccessotS3",
               "Effect": "Allow",
               "Action": ["s3:*"],
               "Principal": {"AWS": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]}},
-              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteS3"}, "/*"]]}]
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketProd"}, "/*"]]}]
             },
             {
+              "Sid": "AllowInternetAccesstoS3Resources",
               "Effect": "Allow",
               "Action": ["s3:GetObject"],
               "Principal": "*",
-              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteS3"}, "/*"]]}]
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketProd"}, "/*"]]}]
             }
           ]
         }
       }
+    },
+    "WebsiteProd2Policy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "WebsiteBucketProd2"},
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "AllowWebLambdaAccessotS3",
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Principal": {"AWS": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]}},
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketProd2"}, "/*"]]}]
+            },
+            {
+              "Sid": "AllowInternetAccesstoS3Resources",
+              "Effect": "Allow",
+              "Action": ["s3:GetObject"],
+              "Principal": "*",
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketProd2"}, "/*"]]}]
+            }
+          ]
+        }
+      }
+    },
+    "WebsiteQaPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "WebsiteBucketDev"},
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "AllowWebLambdaAccessotS3",
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Principal": {"AWS": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]}},
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketDev"}, "/*"]]}]
+            },
+            {
+              "Sid": "AllowInternetAccesstoS3Resources",
+              "Effect": "Allow",
+              "Action": ["s3:GetObject"],
+              "Principal": "*",
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketDev"}, "/*"]]}]
+            }
+          ]
+        }
+      }
+    },
+    "WebsiteDevPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "WebsiteBucketQa"},
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "AllowWebLambdaAccessotS3",
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Principal": {"AWS": {"Fn::GetAtt": ["WebLambdaRole", "Arn"]}},
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketQa"}, "/*"]]}]
+            },
+            {
+              "Sid": "AllowInternetAccesstoS3Resources",
+              "Effect": "Allow",
+              "Action": ["s3:GetObject"],
+              "Principal": "*",
+              "Resource": [{"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "WebsiteBucketQa"}, "/*"]]}]
+            }
+          ]
+        }
+      }
+    },
+    "WebsiteDNS": {
+      "Type": "AWS::Route53::HostedZone",
+      "Properties": {
+        "Name": {"Ref": "website"},
+        "HostedZoneTags": [{"Key": "application", "Value": {"Ref": "website"}}]
+      }
+    },
+    "Website": {
+      "Type": "AWS::Route53::RecordSetGroup",
+      "Properties": {
+        "HostedZoneName": {"Fn::Join": ["", [{"Ref": "website"}, "."]]},
+        "Comment": {"Fn::Join": ["", [{"Ref": "website"}, ""]]},
+        "RecordSets": [
+          {
+            "Name": {"Ref": "website"},
+            "Type": "A",
+            "AliasTarget": {
+              "HostedZoneId": {"Fn::FindInMap": ["RegionMap", {"Ref": "AWS::Region"}, "ZoneId"]},
+              "DNSName": {"Fn::FindInMap": ["RegionMap", {"Ref": "AWS::Region"}, "Endpoint"]}
+            }
+          },
+          {
+            "Name": {"Fn::Join": ["", ["www.", {"Ref": "website"}]]},
+            "Type": "CNAME",
+            "TTL": "900",
+            "ResourceRecords": [
+              {"Fn::GetAtt": ["WebsiteBucketProd2", "DomainName"]}
+            ]
+          },
+          {
+            "Name": {"Fn::Join": ["", ["dev.", {"Ref": "website"}]]},
+            "Type": "CNAME",
+            "TTL": "900",
+            "ResourceRecords": [
+              {"Fn::GetAtt": ["WebsiteBucketDev", "DomainName"]}
+            ]
+          },
+          {
+            "Name": {"Fn::Join": ["", ["qa.", {"Ref": "website"}]]},
+            "Type": "CNAME",
+            "TTL": "900",
+            "ResourceRecords": [
+              {"Fn::GetAtt": ["WebsiteBucketQa", "DomainName"]}
+            ]
+          }
+        ]
+      }
     }
   },
   "Outputs": {
-    "WebsiteURL": {"Value": {"Fn::GetAtt": ["WebsiteS3", "WebsiteURL"]}},
-    "WebsiteHttpsURL": {"Value": {"Fn::Join": ["", ["https://", {"Fn::GetAtt": ["WebsiteS3", "DomainName"]}]]}}
+    "HostedZoneName": {"Value": {"Fn::Join": ["", [{"Ref": "website"}, "."]]}},
+    "www": {"Value": {"Fn::Join": ["", [{"Ref": "website"}, "."]]}},
+    "www2": {"Value": {"Fn::Join": ["", ["www.", {"Ref": "website"}, "."]]}},
+    "DNSName": {"Value": {"Fn::GetAtt": ["WebsiteBucketProd", "DomainName"]}},
+    "HostedZoneId": {"Value": {"Ref": "WebsiteDNS"}},
+    "WebsiteURL": {"Value": {"Fn::GetAtt": ["WebsiteBucketProd", "WebsiteURL"]}},
+    "WebsiteHttpsURL": {"Value": {"Fn::Join": ["", ["https://", {"Fn::GetAtt": ["WebsiteBucketProd", "DomainName"]}]]}}
   }
 }

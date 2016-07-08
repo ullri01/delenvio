@@ -5,6 +5,7 @@ if (require.main === module && process.argv[2]) {
 }
 var path = require('path')
 var ld = require('lodash')
+var exec = require('child_process').exec
 var template = require(path.join(__dirname, '/template.json'))
 var deployer = require(path.join(__dirname, '/deploy.js'))
 var config = require(path.join(__dirname, '/config'))[env]
@@ -93,9 +94,12 @@ function createStack (identifier, template) {
 
   var paramValues = {
     env: env,
-    lambdaName: config.lambda.lambda,
-    alarmsEmail: config.alarmsEmail
+    alarmsEmail: config.alarmsEmail,
+    bucketName: config.s3.bucket
   }
+  ld.keys(config.lambda).forEach(function (lambda) {
+    paramValues[lambda] = config.lambda[lambda]
+  })
   var parameters = []
   for (var key in paramValues) {
     parameters.push({ParameterKey: key, ParameterValue: paramValues[key]})
@@ -129,9 +133,13 @@ function updateStack (identifier, template) {
   logger.info('Update stack:', identifier)
   var paramValues = {
     env: env,
-    lambdaName: config.lambda.lambda,
-    alarmsEmail: config.alarmsEmail
+    alarmsEmail: config.alarmsEmail,
+    bucketName: config.s3.bucket
   }
+  ld.keys(config.lambda).forEach(function (lambda) {
+    paramValues[lambda] = config.lambda[lambda]
+  })
+
   var parameters = []
   for (var key in paramValues) {
     parameters.push({ParameterKey: key, ParameterValue: paramValues[key]})
@@ -181,13 +189,13 @@ function createOrUpdateStack (identifier, template) {
 function deployLambdaFunctions () {
   logger.info('deployLambdaFunctions ...')
   return Promise.join(
-  Promise.map(ld.keys(config.lambda), function(lambda){
-    return deployer.zipLambda(lambda)
+  Promise.map(ld.keys(config.lambda), function (lambda) {
+    return deployer.zipLambda(lambda, config.lambda[lambda]+ '-' + env)
   }),
   function () {
     return Promise.join(
-    Promise.map(ld.keys(config.lambda), function(lambda){
-      return deployer.deployLambdaZipToS3(lambda)
+    Promise.map(ld.keys(config.lambda), function (lambda) {
+      return deployer.deployLambdaZipToS3(lambda, config.lambda[lambda]+ '-' + env)
     }),
     function () {
       var locations = []
@@ -196,7 +204,7 @@ function deployLambdaFunctions () {
       }
       return locations
     })
-  }).catch(function(e){
+  }).catch(function (e) {
     logger.error(e.message, e.stack)
   })
 }

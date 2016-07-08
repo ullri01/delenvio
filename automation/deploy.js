@@ -12,6 +12,7 @@ var AWS = require('aws-sdk')
 var config = require('./config')[env]
 var fs = require('fs')
 var path = require('path')
+var exec = require('child_process').exec
 var archiver = require('archiver')
 var Logger = require(path.join(__dirname, '/logger'))
 
@@ -44,15 +45,15 @@ function getIgnores (lambda) {
   return ignores
 }
 
-function zipLambda (lambda) {
-  var packageZip = buildDir + lambda + '.zip'
+function zipLambda (lambda, lambdaName) {
+  var packageZip = buildDir + lambdaName + '.zip'
   logger.info('Zipping', packageZip)
 
   return new Promise(function (resolve, reject) {
     var output = fs.createWriteStream(packageZip)
     var archive = archiver('zip')
     output.on('close', function () {
-      logger.info(lambda, archive.pointer(), 'total bytes')
+      logger.info(lambdaName, archive.pointer(), 'total bytes')
       resolve(packageZip)
     })
 
@@ -65,19 +66,19 @@ function zipLambda (lambda) {
     archive.append(fs.createReadStream(path.join(__dirname, '/config.js')), {name: 'config.js'})
     archive.append(fs.createReadStream(path.join(__dirname, '/logger.js')), {name: 'logger.js'})
     archive.finalize()
-  }).catch(function(e){
+  }).catch(function (e) {
     logger.error('zipLambda', e, e.stack)
   })
 }
 
-function deployLambdaZipToS3 (lambda) {
-  var packageZip = buildDir + lambda + '.zip'
+function deployLambdaZipToS3 (lambda, lambdaName) {
+  var packageZip = buildDir + lambdaName + '.zip'
   logger.info('Uploading to S3', packageZip)
 
   return new Promise(function (resolve, reject) {
     var body = fs.createReadStream(packageZip)
 
-    var params = {Bucket: config.s3.bucket, Key: config.s3.deploy + lambda + '.zip', Body: body}
+    var params = {Bucket: config.s3.bucket, Key: config.s3.deploy + lambdaName + '.zip', Body: body}
     s3.upload(params).send(function (err, data) {
       if (err) {
         logger.error('UPLOAD TO S3: ', err)
@@ -86,7 +87,7 @@ function deployLambdaZipToS3 (lambda) {
         resolve(data)
       }
     })
-  }).catch(function(e){
+  }).catch(function (e) {
     logger.error(e, e.stack)
   })
 }
@@ -113,21 +114,45 @@ function updateLambdaFunction (name, bucket, s3key) {
   })
 }
 
-function deployLambdaFunction (name, funcName) {
-  zipLambda(name).then(function (data) {
-    return deployLambdaZipToS3(name)
+function deployLambdaFunction (dirName, lambdaName) {
+  zipLambda(dirName, lambdaName).then(function (data) {
+    return deployLambdaZipToS3(dirName, lambdaName)
   }).then(function (data) {
-    return updateLambdaFunction(funcName, data.Bucket, data.Key)
+    return updateLambdaFunction(lambdaName, data.Bucket, data.Key)
   }).then(function (data) {
     logger.info('Lambda function:', data.FunctionArn)
   })
 }
 
+function deployStaticWebsite (sitePath, siteName, profile) {
+  return new Promise(function (resolve, reject) {
+    var profileOption = profile ? ' --profile ' + profile : ''
+    var cmd = 'aws s3 cp' + profileOption + ' --recursive ' + sitePath + ' s3://' + siteName + '/'
+
+    exec(cmd, function (error, stdout, stderr) {
+      if (error) {
+        logger.error('Site deployment: ', error, stderr)
+        reject(error)
+      }
+      else {
+        resolve(stdout)
+      }
+    });
+  }).then(function (data) {
+    logger.info('Site deployed:', data)
+  })
+}
+
 if (require.main === module) {
   var name = process.argv[2]
-  var funcName = config.lambda.lambda + '-' + env
-  logger.info('Deploying: ', funcName, env)
-  deployLambdaFunction(name, funcName)
+  if (name === 'website') {
+    var site = (env === 'prod') ? config.site : env + '.' + config.site
+    deployStaticWebsite(config.sitePath, site, config.profile)
+  } else {
+    var funcName = config.lambda.lambda + '-' + env
+    logger.info('Deploying: ', funcName, env)
+    deployLambdaFunction(name, funcName)
+  }
 } else {
   module.exports = {
     zipLambda: zipLambda,
