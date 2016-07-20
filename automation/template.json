@@ -161,11 +161,11 @@
       "Properties": {
         "RestApiId": {"Ref": "RestApi"},
         "ResourceId": {"Ref": "WebApiResource"},
-        "HttpMethod": "POST",
+        "HttpMethod": "GET",
         "AuthorizationType": "NONE",
         "Integration": {
           "Type": "AWS",
-          "IntegrationHttpMethod": "POST",
+          "IntegrationHttpMethod": "GET",
           "Uri": {
             "Fn::Join": [
               "", [
@@ -248,6 +248,10 @@
         ]
       }
     },
+
+
+
+
     "WebsiteBucketProd": {
       "Type": "AWS::S3::Bucket",
       "Properties": {

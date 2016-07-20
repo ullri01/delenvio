@@ -5,7 +5,7 @@ if (require.main === module && process.argv.length != 4) {
   process.exit(0)
 }
 if (require.main === module && process.argv[3]) {
-  env = process.argv[3]
+  env = process.argv[2]
 }
 var Promise = require('bluebird')
 var AWS = require('aws-sdk')
@@ -129,7 +129,7 @@ function deployStaticWebsite (sitePath, siteName, profile) {
     var profileOption = profile ? ' --profile ' + profile : ''
     var cmd = 'aws s3 cp' + profileOption + ' --recursive ' + sitePath + ' s3://' + siteName + '/'
 
-    exec(cmd, function (error, stdout, stderr) {
+    exec(cmd, {maxBuffer: 1024 * 3000},function (error, stdout, stderr) {
       if (error) {
         logger.error('Site deployment: ', error, stderr)
         reject(error)
@@ -144,7 +144,7 @@ function deployStaticWebsite (sitePath, siteName, profile) {
 }
 
 if (require.main === module) {
-  var name = process.argv[2]
+  var name = process.argv[3]
   if (name === 'website') {
     var site = (env === 'prod') ? config.site : env + '.' + config.site
     deployStaticWebsite(config.sitePath, site, config.profile)
